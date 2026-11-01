@@ -1233,7 +1233,9 @@ constexpr std::array<InfoMap, 11> player_times = {{
 ///
 /// -----------------------------------------------------------------------------
 // clang-format off
-constexpr std::array<InfoMap, 20> player_process = {{
+constexpr std::array<InfoMap, 22> player_process = {{
+    {"firetvsource",        PLAYER_PROCESS_FIRETV_SOURCE},
+    {"firetvfelstatus",     PLAYER_PROCESS_FIRETV_FEL_STATUS},
     {"videodecoder",        PLAYER_PROCESS_VIDEODECODER},
     {"deintmethod",         PLAYER_PROCESS_DEINTMETHOD},
     {"pixformat",           PLAYER_PROCESS_PIXELFORMAT},

@@ -930,6 +930,8 @@ bool CBitstreamConverter::BitstreamConvert(uint8_t* pData,
     else
     {
       unit_type = (*buf >> 1) & 0x3f;
+      if (m_nalObserver)
+        m_nalObserver(buf, nal_size);
     }
 
     // Don't add sps/pps if the unit already contain them

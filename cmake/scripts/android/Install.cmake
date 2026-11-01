@@ -149,6 +149,11 @@ if(TARGET ${APP_NAME_LC}::Shairplay)
   add_bundle_file(${APP_NAME_LC}::Shairplay ${libdir} "")
 endif()
 
+if(ENABLE_ANDROID_DVFELPLAY)
+  get_filename_component(dvfelplay_libdir "${DVFELPLAY_LIBRARY}" DIRECTORY)
+  add_bundle_file(${DVFELPLAY_LIBRARY} ${libdir} ${dvfelplay_libdir})
+endif()
+
 # Main targets from Makefile.in
 if(CPU MATCHES i686)
   set(CPU x86)

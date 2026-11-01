@@ -43,4 +43,9 @@ if(("gbm" IN_LIST CORE_PLATFORM_NAME_LC OR "wayland" IN_LIST CORE_PLATFORM_NAME_
   list(APPEND HEADERS DVDVideoCodecDRMPRIME.h)
 endif()
 
+if(ENABLE_ANDROID_DVFELPLAY)
+  list(APPEND SOURCES AndroidFEL.cpp AndroidStreamMetadata.cpp)
+  list(APPEND HEADERS AndroidFEL.h AndroidStreamMetadata.h)
+endif()
+
 core_add_library(dvdvideocodecs)

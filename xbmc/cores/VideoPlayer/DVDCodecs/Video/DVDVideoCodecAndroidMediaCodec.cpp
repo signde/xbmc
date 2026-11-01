@@ -14,8 +14,18 @@
 
 #include "DVDVideoCodecAndroidMediaCodec.h"
 
+#ifdef HAS_ANDROID_DVFELPLAY
+#include "AndroidFEL.h"
+#include "AndroidStreamMetadata.h"
+#include <androidjni/Build.h>
+#endif
+
 #include "DVDCodecs/DVDFactoryCodec.h"
 #include "ServiceBroker.h"
+#include "cores/DataCacheCore.h"
+#include "utils/JSONVariantWriter.h"
+#include "utils/StreamDetails.h"
+#include "utils/Variant.h"
 #include "cores/VideoPlayer/Buffers/VideoBuffer.h"
 #include "cores/VideoPlayer/Interface/DemuxCrypto.h"
 #include "cores/VideoPlayer/Interface/TimingConstants.h"
@@ -40,6 +50,7 @@
 
 #include <array>
 #include <cassert>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -330,6 +341,49 @@ bool CDVDVideoCodecAndroidMediaCodec::Register()
 
 std::atomic<bool> CDVDVideoCodecAndroidMediaCodec::m_InstanceGuard(false);
 
+namespace
+{
+std::string FireTVSourceInfo(const CDVDStreamInfo& hints,
+                            const std::map<std::string, std::string>& metadata = {})
+{
+  CVariant info(CVariant::VariantTypeObject);
+  info["video.source.hdr.type"] = CStreamDetails::HdrTypeToString(hints.hdrType);
+  if (hints.bitdepth > 0)
+    info["video.bit.depth"] = std::to_string(hints.bitdepth);
+  if (const char* name = av_color_primaries_name(hints.colorPrimaries))
+    info["video.hdr.colour.primaries"] = name;
+  if (const char* name = av_color_transfer_name(hints.colorTransferCharacteristic))
+    info["video.hdr.transfer"] = name;
+  if (hints.hdrType == StreamHdrType::HDR_TYPE_DOLBYVISION)
+  {
+    const auto& dv = hints.dovi;
+    info["video.dovi.profile"] = std::to_string(dv.dv_profile);
+    info["video.dovi.level"] = std::to_string(dv.dv_level);
+    info["video.dovi.version.major"] = std::to_string(dv.dv_version_major);
+    info["video.dovi.version.minor"] = std::to_string(dv.dv_version_minor);
+    info["video.dovi.bl.signal.compatibility"] = std::to_string(dv.dv_bl_signal_compatibility_id);
+    info["video.dovi.rpu.present"] = dv.rpu_present_flag ? "true" : "false";
+    info["video.dovi.bl.present"] = dv.bl_present_flag ? "true" : "false";
+    info["video.dovi.el.present"] = dv.el_present_flag ? "true" : "false";
+  }
+  if (hints.masteringMetadata && hints.masteringMetadata->has_luminance)
+  {
+    info["video.hdr.min.lum"] = StringUtils::Format("{:.4f}", av_q2d(hints.masteringMetadata->min_luminance));
+    info["video.hdr.max.lum"] = StringUtils::Format("{:.0f}", av_q2d(hints.masteringMetadata->max_luminance));
+  }
+  if (hints.contentLightMetadata)
+  {
+    info["video.hdr.max.cll"] = std::to_string(hints.contentLightMetadata->MaxCLL);
+    info["video.hdr.max.fall"] = std::to_string(hints.contentLightMetadata->MaxFALL);
+  }
+  for (const auto& [key, value] : metadata)
+    info[key] = value;
+  std::string json;
+  CJSONVariantWriter::Write(info, json, true);
+  return json;
+}
+} // namespace
+
 bool CDVDVideoCodecAndroidMediaCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptions &options)
 {
   std::vector<CJNIMediaCodecInfo> codecInfos;
@@ -342,8 +396,15 @@ bool CDVDVideoCodecAndroidMediaCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptio
     CLog::Log(LOGERROR, "CDVDVideoCodecAndroidMediaCodec::Open - InstanceGuard locked");
     return false;
   }
+  CServiceBroker::GetDataCacheCore().SetVideoFireTVInfo({});
+  CServiceBroker::GetDataCacheCore().SetVideoFELStatus({});
   m_opened = false;
   m_needSecureDecoder = false;
+#ifdef HAS_ANDROID_DVFELPLAY
+  m_fel.reset();
+  m_felFailed = false;
+  m_streamMetadata.reset();
+#endif
 
   // mediacodec crashes with null size. Trap this...
   if (!hints.width || !hints.height)
@@ -549,6 +610,20 @@ bool CDVDVideoCodecAndroidMediaCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptio
           m_formatname = isDvhe ? "amc-dvhe" : "amc-dvh1";
           profile = 0; // not an HEVC profile
 
+#ifdef HAS_ANDROID_DVFELPLAY
+          if (m_hints.dovi.dv_profile == 7 && m_render_surface && !m_hints.cryptoSession &&
+              CJNIBuild::DEVICE == "gazelle" && CAndroidFEL::IsAvailable())
+          {
+            m_fel = std::make_unique<CAndroidFEL>(m_hints.width, m_hints.height);
+            m_felFallbackConvertDovi = convertDovi;
+            m_felFallbackZeroLevel5 = doviZeroLevel5;
+            // The hardware composer needs the original P7 RPU and enhancement layer.
+            convertDovi = false;
+            doviZeroLevel5 = false;
+            CLog::Log(LOGINFO, "MediaCodec: probing Profile 7 for Fire TV FEL");
+          }
+#endif
+
           switch (m_hints.dovi.dv_profile)
           {
             case 0:
@@ -617,6 +692,10 @@ bool CDVDVideoCodecAndroidMediaCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptio
         }
       }
 
+#ifdef HAS_ANDROID_DVFELPLAY
+      if (!m_bitstream)
+        m_fel.reset();
+#endif
       break;
     }
     case AV_CODEC_ID_WMV3:
@@ -930,6 +1009,17 @@ bool CDVDVideoCodecAndroidMediaCodec::Open(CDVDStreamInfo &hints, CDVDCodecOptio
 
   m_opened = true;
 
+#ifdef HAS_ANDROID_DVFELPLAY
+  if (m_bitstream && m_hints.codec == AV_CODEC_ID_HEVC)
+  {
+    m_streamMetadata = std::make_unique<CAndroidStreamMetadata>();
+    m_bitstream->SetNalObserver([this](const uint8_t* nal, size_t size)
+    {
+      m_streamMetadata->Observe(nal, size);
+    });
+  }
+#endif
+  CServiceBroker::GetDataCacheCore().SetVideoFireTVInfo(FireTVSourceInfo(hints));
   m_processInfo.SetVideoDecoderName(m_formatname, true );
   m_processInfo.SetVideoPixelFormat(m_render_surface ? "Surface" : "EGL");
   m_processInfo.SetVideoDimensions(m_hints.width, m_hints.height);
@@ -958,6 +1048,9 @@ FAIL:
 
   m_codec = nullptr;
 
+#ifdef HAS_ANDROID_DVFELPLAY
+  m_fel.reset();
+#endif
   m_bitstream.reset();
 
   return false;
@@ -968,6 +1061,8 @@ void CDVDVideoCodecAndroidMediaCodec::Dispose()
   if (!m_opened)
     return;
 
+  CServiceBroker::GetDataCacheCore().SetVideoFireTVInfo({});
+  CServiceBroker::GetDataCacheCore().SetVideoFELStatus({});
   CLog::LogF(LOGDEBUG, "call");
 
   // invalidate any inflight outputbuffers
@@ -990,6 +1085,10 @@ void CDVDVideoCodecAndroidMediaCodec::Dispose()
     m_codec = nullptr;
     m_state = MEDIACODEC_STATE_STOPPED;
   }
+#ifdef HAS_ANDROID_DVFELPLAY
+  // Stop BL first, then release the EL decoder and display-owned buffers.
+  m_fel.reset();
+#endif
   ReleaseSurfaceTexture();
 
   m_InstanceGuard.exchange(false);
@@ -1056,7 +1155,21 @@ bool CDVDVideoCodecAndroidMediaCodec::AddData(const DemuxPacket &packet)
       // we have an input buffer, fill it.
       if (pData && m_bitstream)
       {
-        m_bitstream->Convert(pData, iSize);
+        const bool converted = m_bitstream->Convert(pData, iSize);
+#ifdef HAS_ANDROID_DVFELPLAY
+        if (m_streamMetadata && m_streamMetadata->TakeChanges())
+          CServiceBroker::GetDataCacheCore().SetVideoFireTVInfo(
+              FireTVSourceInfo(m_hints, m_streamMetadata->Values()));
+#endif
+#ifdef HAS_ANDROID_DVFELPLAY
+        if (m_fel && !converted)
+        {
+          m_felFailed = true;
+          return true;
+        }
+#else
+        (void)converted;
+#endif
 
         if (m_state == MEDIACODEC_STATE_FLUSHED && !m_bitstream->CanStartDecode())
         {
@@ -1080,7 +1193,51 @@ bool CDVDVideoCodecAndroidMediaCodec::AddData(const DemuxPacket &packet)
         return false;
       }
 
+#ifdef HAS_ANDROID_DVFELPLAY
+      const uint8_t* felData = pData;
+      if (m_fel)
+      {
+        const bool wasActive = m_fel->IsActive();
+        auto result = m_fel->Prepare(pData, iSize, felData, iSize);
+        if (result == CAndroidFEL::Result::FALLBACK)
+        {
+          CLog::Log(LOGINFO, "MediaCodec: FEL unavailable for this stream; using Kodi DV path");
+          m_fel.reset();
+          if (m_bitstream)
+          {
+            m_bitstream->SetConvertDovi(m_felFallbackConvertDovi);
+            m_bitstream->SetDoviZeroLevel5(m_felFallbackZeroLevel5);
+            if (!m_bitstream->Convert(packet.pData, packet.iSize))
+            {
+              m_felFailed = true;
+              return true;
+            }
+            pData = m_bitstream->GetConvertBuffer();
+            iSize = m_bitstream->GetConvertSize();
+          }
+          felData = pData;
+        }
+        else if (result == CAndroidFEL::Result::ERROR)
+        {
+          CLog::Log(LOGERROR, "MediaCodec: FEL access-unit filtering failed");
+          m_felFailed = true;
+          return true;
+        }
+        else if (!wasActive && m_fel->IsActive())
+          CLog::Log(LOGINFO, "MediaCodec: Fire TV hardware FEL active");
+      }
+#endif
       size_t out_size = buffer.capacity();
+#ifdef HAS_ANDROID_DVFELPLAY
+      if (m_fel && iSize > out_size)
+      {
+        CLog::Log(LOGERROR, "MediaCodec: FEL base-layer packet exceeds input buffer ({} > {})",
+                  iSize, out_size);
+        m_fel->Drop();
+        m_felFailed = true;
+        return true;
+      }
+#endif
       if ((size_t)iSize > out_size)
       {
         CLog::Log(LOGINFO, "CDVDVideoCodecAndroidMediaCodec::AddData: iSize({}) > size({})", iSize,
@@ -1135,11 +1292,23 @@ bool CDVDVideoCodecAndroidMediaCodec::AddData(const DemuxPacket &packet)
           }
 
           default:
+#ifdef HAS_ANDROID_DVFELPLAY
+            memcpy(dst_ptr, felData, iSize);
+#else
             memcpy(dst_ptr, pData, iSize);
+#endif
             break;
         }
       }
 
+#ifdef HAS_ANDROID_DVFELPLAY
+      if (m_fel && !dst_ptr)
+      {
+        m_fel->Drop();
+        m_felFailed = true;
+        return true;
+      }
+#endif
 
       // Translate from VideoPlayer dts/pts to MediaCodec pts,
       // pts WILL get re-ordered by MediaCodec if needed.
@@ -1176,7 +1345,18 @@ bool CDVDVideoCodecAndroidMediaCodec::AddData(const DemuxPacket &packet)
         xbmc_jnienv()->ExceptionDescribe();
         xbmc_jnienv()->ExceptionClear();
         CLog::Log(LOGERROR, "CDVDVideoCodecAndroidMediaCodec::AddData error");
+#ifdef HAS_ANDROID_DVFELPLAY
+        if (m_fel)
+        {
+          m_fel->Drop();
+          m_felFailed = true;
+        }
+#endif
       }
+#ifdef HAS_ANDROID_DVFELPLAY
+      else if (m_fel)
+        m_fel->Commit(presentationTimeUs);
+#endif
       m_indexInputBuffer = -1;
     }
     else
@@ -1202,6 +1382,10 @@ void CDVDVideoCodecAndroidMediaCodec::Reset()
       CLog::Log(LOGERROR, "CDVDVideoCodecAndroidMediaCodec::Reset: flush failed");
     }
 
+#ifdef HAS_ANDROID_DVFELPLAY
+    if (m_fel)
+      m_fel->Flush();
+#endif
     if (m_state == MEDIACODEC_STATE_ERROR)
     {
       m_codec->stop();
@@ -1257,6 +1441,10 @@ CDVDVideoCodec::VCReturn CDVDVideoCodecAndroidMediaCodec::GetPicture(VideoPictur
   if (!m_opened)
     return VC_NONE;
 
+#ifdef HAS_ANDROID_DVFELPLAY
+  if (m_felFailed)
+    return VC_ERROR;
+#endif
   if (m_state == MEDIACODEC_STATE_ERROR || m_state == MEDIACODEC_STATE_ENDOFSTREAM)
     return VC_EOF;
 

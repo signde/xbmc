@@ -324,6 +324,12 @@ bool CPlayerGUIInfo::GetLabel(std::string& value,
     ///////////////////////////////////////////////////////////////////////////////////////////////
     // PLAYER_PROCESS_*
     ///////////////////////////////////////////////////////////////////////////////////////////////
+    case PLAYER_PROCESS_FIRETV_SOURCE:
+      value = CServiceBroker::GetDataCacheCore().GetVideoFireTVInfo();
+      return true;
+    case PLAYER_PROCESS_FIRETV_FEL_STATUS:
+      value = CServiceBroker::GetDataCacheCore().GetVideoFELStatus();
+      return true;
     case PLAYER_PROCESS_VIDEODECODER:
       value = CServiceBroker::GetDataCacheCore().GetVideoDecoderName();
       return true;

@@ -62,7 +62,7 @@ public class XBMCSearchableActivity extends Activity
 
     Intent newIntent = new Intent(origIntent.getAction(), data);
     newIntent.setDataAndType(data, "video/*");
-    newIntent.setClass(this, @APP_PACKAGE@.Main.class);
+    newIntent.setClass(this, @APP_PACKAGE@.Splash.class);
     newIntent.addFlags(Intent.FLAG_ACTIVITY_PREVIOUS_IS_TOP);
     startActivity(newIntent);
     finish();

@@ -43,3 +43,4 @@ addons/xbmc.metadata/*
 addons/xbmc.pvr/*
 addons/xbmc.python/*
 addons/xbmc.webinterface/*
+addons/script.signde.tinyppi/*
