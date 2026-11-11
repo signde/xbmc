@@ -613,3 +613,27 @@ float CDataCacheCore::GetPlayPercentage()
 
   return m_timeInfo.m_time * 100 / static_cast<float>(iTotalTime);
 }
+
+void CDataCacheCore::SetVideoFireTVInfo(std::string value)
+{
+  std::unique_lock lock(m_videoPlayerSection);
+  m_playerVideoInfo.fireTVInfo = std::move(value);
+}
+
+std::string CDataCacheCore::GetVideoFireTVInfo()
+{
+  std::unique_lock lock(m_videoPlayerSection);
+  return m_playerVideoInfo.fireTVInfo;
+}
+
+void CDataCacheCore::SetVideoFELStatus(std::string value)
+{
+  std::unique_lock lock(m_videoPlayerSection);
+  m_playerVideoInfo.felStatus = std::move(value);
+}
+
+std::string CDataCacheCore::GetVideoFELStatus()
+{
+  std::unique_lock lock(m_videoPlayerSection);
+  return m_playerVideoInfo.felStatus;
+}

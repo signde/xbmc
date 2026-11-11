@@ -269,3 +269,8 @@ exclude_dll.txt
 
 # clangd index
 .cache/
+
+# Private APK signing material
+*.jks
+*.keystore
+*.password

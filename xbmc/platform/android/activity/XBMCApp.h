@@ -171,6 +171,7 @@ public:
   static void SetSystemVolume(float percent);
 
   void SetDisplayMode(int mode, float rate);
+  void SetRefreshRate(float rate) { m_refreshRate = rate; }
   int GetDPI() const;
   void SetVideoLayoutBackgroundColor(const int color);
 

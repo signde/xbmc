@@ -11,6 +11,7 @@
 #include "cores/FFmpeg.h"
 
 #include <stdint.h>
+#include <functional>
 
 extern "C"
 {
@@ -109,6 +110,12 @@ public:
   void SetRemoveHdr10Plus(bool value) { m_removeHdr10Plus = value; }
   void SetDoviZeroLevel5(bool value) { m_setDoviZeroLevel5 = value; }
 
+  // Optional diagnostic observer sees original HEVC NALs before any conversion.
+  void SetNalObserver(std::function<void(const uint8_t*, size_t)> observer)
+  {
+    m_nalObserver = std::move(observer);
+  }
+
   static bool mpeg2_sequence_header(const uint8_t* data,
                                     const uint32_t size,
                                     mpeg2_sequence* sequence);
@@ -162,4 +169,5 @@ protected:
   bool m_removeDovi;
   bool m_removeHdr10Plus;
   bool m_setDoviZeroLevel5;
+  std::function<void(const uint8_t*, size_t)> m_nalObserver;
 };

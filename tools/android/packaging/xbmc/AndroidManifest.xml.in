@@ -110,7 +110,7 @@
             android:configChanges="orientation|keyboard|keyboardHidden|navigation|touchscreen|screenLayout|screenSize|colorMode"
             android:finishOnTaskLaunch="true"
             android:launchMode="singleInstance"
-            android:exported="true"
+            android:exported="false"
             android:screenOrientation="sensorLandscape"
             android:theme="@style/AppTheme">
 

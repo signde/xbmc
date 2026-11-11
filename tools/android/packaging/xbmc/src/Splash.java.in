@@ -721,6 +721,17 @@ public class Splash extends Activity
   {
     super.onCreate(savedInstanceState);
 
+    // This fork relies on the Cube 3 video driver and companion Magisk module.
+    // Reject unsupported hardware before loading the native player or requesting permissions.
+    if (!"gazelle".equals(Build.DEVICE) || !"AFTGAZL".equals(Build.MODEL)
+        || !"Amazon".equalsIgnoreCase(Build.MANUFACTURER))
+    {
+      showErrorDialog(this, "Fire TV Cube 3 required",
+                      "Kodi FEL is a Fire TV Cube (3rd generation, Gazelle) fork. "
+                          + "This device is not supported. Please install standard Kodi instead.");
+      return;
+    }
+
     // Be sure properties are initialized for native
     XBMCProperties.initialize(getApplicationContext());
 

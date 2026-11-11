@@ -36,6 +36,10 @@ class CJNIMediaCodecBufferInfo;
 class CDVDMediaCodecOnFrameAvailable;
 class CJNIByteBuffer;
 class CBitstreamConverter;
+#ifdef HAS_ANDROID_DVFELPLAY
+class CAndroidFEL;
+class CAndroidStreamMetadata;
+#endif
 
 struct mpeg2_sequence;
 
@@ -169,6 +173,13 @@ protected:
   static std::atomic<bool> m_InstanceGuard;
 
   std::unique_ptr<CBitstreamConverter> m_bitstream;
+#ifdef HAS_ANDROID_DVFELPLAY
+  std::unique_ptr<CAndroidFEL> m_fel;
+  std::unique_ptr<CAndroidStreamMetadata> m_streamMetadata;
+  bool m_felFallbackConvertDovi{false};
+  bool m_felFallbackZeroLevel5{false};
+  bool m_felFailed{false};
+#endif
   VideoPicture m_videobuffer;
 
   int m_indexInputBuffer;

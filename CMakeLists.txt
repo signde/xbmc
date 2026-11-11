@@ -401,6 +401,25 @@ endif()
 # Generate messages
 core_add_subdirs_from_filelist(${CMAKE_SOURCE_DIR}/cmake/messages/flatbuffers/*.txt)
 
+option(ENABLE_ANDROID_DVFELPLAY "Experimental Fire TV Cube 3 hardware FEL" OFF)
+if(ENABLE_ANDROID_DVFELPLAY)
+  if(NOT CORE_SYSTEM_NAME STREQUAL android OR NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
+    message(FATAL_ERROR "Fire TV FEL requires a 32-bit Android build")
+  endif()
+  set(DVFELPLAY_ROOT "" CACHE PATH "Gazelle libdvfelplay prefix (include/ and lib/)")
+  find_path(DVFELPLAY_INCLUDE_DIR dvfelplay.h PATHS "${DVFELPLAY_ROOT}/include"
+            NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+  find_library(DVFELPLAY_LIBRARY dvfelplay PATHS "${DVFELPLAY_ROOT}/lib"
+               NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+  if(NOT DVFELPLAY_LIBRARY MATCHES "libdvfelplay\\.so$")
+    message(FATAL_ERROR "DVFELPLAY_ROOT must provide the Android libdvfelplay.so")
+  endif()
+  include_directories(${DVFELPLAY_INCLUDE_DIR})
+  add_compile_definitions(HAS_ANDROID_DVFELPLAY)
+  list(APPEND DEPLIBS ${DVFELPLAY_LIBRARY})
+  set(DVFELPLAY_ANDROID_LIBRARY "libdvfelplay.so")
+endif()
+
 include_directories(${INCLUDES})
 add_compile_options(${ARCH_DEFINES} "${SYSTEM_DEFINES}" ${DEP_DEFINES} ${PATH_DEFINES})
 

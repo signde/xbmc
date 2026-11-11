@@ -1,3 +1,11 @@
+# Kodi FEL for Fire TV Cube 3
+
+Experimental Piers fork with hardware Dolby Vision Profile 7 FEL for Gazelle.
+Installs separately from official Kodi as **Kodi FEL** (`org.xbmc.kodi.fel`).
+See [compatibility, setup and known issues](docs/README.FireTV-FEL.md).
+Thanks to **djnice** for the Android FEL implementation adapted for this fork.
+Official Kodi information follows below.
+
 ![Kodi Logo](docs/resources/banner.png)
 
 <p align="center">

@@ -29,6 +29,12 @@ public:
   void SignalAudioInfoChange();
   void SignalSubtitleInfoChange();
 
+  // Read-only Fire TV source metadata and FEL pipeline status for diagnostics.
+  void SetVideoFireTVInfo(std::string info);
+  std::string GetVideoFireTVInfo();
+  void SetVideoFELStatus(std::string status);
+  std::string GetVideoFELStatus();
+
   // player video info
   void SetVideoDecoderName(std::string name, bool isHw);
   std::string GetVideoDecoderName();
@@ -230,6 +236,8 @@ protected:
   CCriticalSection m_videoPlayerSection;
   struct SPlayerVideoInfo
   {
+    std::string fireTVInfo;
+    std::string felStatus;
     std::string decoderName;
     bool isHwDecoder;
     std::string deintMethod;

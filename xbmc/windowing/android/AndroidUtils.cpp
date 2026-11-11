@@ -181,6 +181,9 @@ bool CAndroidUtils::SetNativeResolution(const RESOLUTION_INFO& res)
   CLog::Log(LOGINFO, "CAndroidUtils: SetNativeResolution: {}: {}x{} {}x{}@{:f}", res.strId,
             res.iWidth, res.iHeight, res.iScreenWidth, res.iScreenHeight, res.fRefreshRate);
 
+  // Frame timestamps need the current rate even when no mode switch is necessary.
+  CXBMCApp::Get().SetRefreshRate(res.fRefreshRate);
+
   // Avoid calling the mode-switch API unless the resolution and/or refresh rate changes
   if (s_res_cur_displayMode.iScreenWidth != res.iScreenWidth ||
       s_res_cur_displayMode.iScreenHeight != res.iScreenHeight ||
